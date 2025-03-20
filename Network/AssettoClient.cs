@@ -15,16 +15,24 @@ namespace AssettoNet.Network
 
         private UdpClient _client;
         private bool _isListening;
-        private bool _hasSubscribed;
+        private bool _isSubscribed;
+        private bool _isConnected;
 
         public AssettoClient()
         {
             _client = new UdpClient();
             _isListening = false;
-            _hasSubscribed = false;
+            _isSubscribed = false;
+            _isConnected = false;
         }
 
-        public async Task ConnectAsync(string host, int port)
+        /// <summary>
+        /// Establishes a connection to the Assetto Corsa UDP server and performs a handshake.
+        /// </summary>
+        /// <param name="host">The hostname or IP address of the machine running Assetto Corsa.</param>
+        /// <param name="port">The port of the Assetto Corsa UDP server (default: 9996).</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        public async Task ConnectAsync(string host, int port = 9996)
         {
             _client.Connect(host, port);
 
@@ -34,9 +42,16 @@ namespace AssettoNet.Network
             OnClientConnected?.Invoke(this, EventArgs.Empty);
         }
 
-        public void Disconnect()
+        /// <summary>
+        /// Unsubscribes from telemetry events and stops the event loop.  
+        /// </summary>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        public async Task DisconnectAsync()
         {
+            await UnsubscribeAsync();
+
             _isListening = false;
+            _isConnected = false;
         }
 
         private async Task SendHandshakeAsync()
@@ -91,7 +106,7 @@ namespace AssettoNet.Network
             var packet = await request.SerializeAsync();
             await _client.SendAsync(packet, packet.Length);
 
-            _hasSubscribed = true;
+            _isSubscribed = true;
         }
 
         private async Task UnsubscribeAsync()
@@ -105,11 +120,27 @@ namespace AssettoNet.Network
 
             var packet = await request.SerializeAsync();
             await _client.SendAsync(packet, packet.Length);
+
+            _isSubscribed = false;
         }
 
+        /// <summary>
+        /// Listens for telemetry events from Assetto Corsa and processes them accordingly.
+        /// </summary>
+        /// <param name="eventType">The type of telemetry event to listen for.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <exception cref="Exception">
+        /// Thrown if the client is not connected before attempting to listen for events,  
+        /// or if an invalid buffer is received from the server.
+        /// </exception>
         public async Task ListenForEventsAsync(AssettoEventType eventType)
         {
-            if(_hasSubscribed)
+            if(!_isConnected)
+            {
+                throw new Exception("You must call ConnectAsync before you can listen for events.");
+            }
+
+            if(_isSubscribed)
             {
                 await UnsubscribeAsync();
             }

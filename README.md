@@ -3,8 +3,11 @@ AssettoNet is a .NET Standard library designed for developers to connect to the 
 
 ## Features
 ✅ Connect to the Assetto Corsa UDP server
+
 ✅ Receive real-time telemetry updates
+
 ✅ Subscribe to different event types (e.g., lap completion, physics updates)
+
 ✅ Lightweight and easy to integrate
 
 ## Usage

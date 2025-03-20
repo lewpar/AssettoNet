@@ -40,6 +40,8 @@ namespace AssettoNet.Network
             await ReadHandshakeAsync();
 
             OnClientConnected?.Invoke(this, EventArgs.Empty);
+
+            _isConnected = true;
         }
 
         /// <summary>

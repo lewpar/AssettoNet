@@ -10,8 +10,14 @@ AssettoNet is a .NET Standard library designed for developers to connect to the 
 
 ✅ Lightweight and easy to integrate
 
+## Install
+Add the `AssettoNet` package through the Nuget Package Manager or install manually:
+```
+dotnet add package AssettoNet
+```
+
 ## Usage
-You can view the example project [here](https://github.com/lewpar/AssettoNetExample).
+You can view an example project [here](https://github.com/lewpar/AssettoNetExample).
 
 ## Requirements
 - .NET Standard 2.1

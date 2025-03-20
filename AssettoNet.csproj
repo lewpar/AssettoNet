@@ -4,6 +4,20 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <Title>AssettoNet</Title>
+    <Description>AssettoNet is designed for developers to connect to the Assetto Corsa UDP telemetry server and retrieve real-time car telemetry data.</Description>
+    <PackageProjectUrl></PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/lewpar/AssettoNet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>assetto corsa, racing simulation, api, telemetry</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
 </Project>

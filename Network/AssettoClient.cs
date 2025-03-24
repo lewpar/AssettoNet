@@ -1,28 +1,54 @@
 ﻿using AssettoNet.Events;
+using AssettoNet.IO;
+using AssettoNet.Network.Struct;
 
 using System;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace AssettoNet.Network
 {
+    /// <summary>
+    /// A UDP client for connecting to the Assetto Corsa UDP telemetry server.
+    /// </summary>
     public class AssettoClient
     {
-        public event EventHandler<EventArgs>? OnClientConnected;
-        public event EventHandler<AssettoHandshakeEventArgs>? OnClientHandshake;
-        public event EventHandler<AssettoOperationEventArgs>? OnClientOperationEvent;
-        public event EventHandler<EventArgs>? OnClientListening;
+        /// <summary>
+        /// This event is fired when the client has passed handshake with the Assetto Telemetry server.
+        /// </summary>
+        public event EventHandler<AssettoConnectedEventArgs>? OnConnected;
 
-        private UdpClient _client;
+        /// <summary>
+        /// This event is fired for every physics update.
+        /// </summary>
+        public event EventHandler<AssettoPhysicsUpdateEventArgs>? OnPhysicsUpdate;
+
+        /// <summary>
+        /// This event is fired when a track lap is completed.
+        /// </summary>
+        public event EventHandler<AssettoLapCompletedEventArgs>? OnLapCompleted;
+
+        /// <summary>
+        /// This event is fired when an unhandled exception occurs in the event loops.
+        /// </summary>
+        public event EventHandler<UnhandledExceptionEventArgs>? OnUnhandledException;
+
         private bool _isListening;
-        private bool _isSubscribed;
         private bool _isConnected;
 
+        private UdpClient _updateClient;
+        private UdpClient _spotClient;
+
+        /// <summary>
+        /// A UDP client for connecting to the Assetto Corsa UDP telemetry server.
+        /// </summary>
         public AssettoClient()
         {
-            _client = new UdpClient();
+            _updateClient = new UdpClient();
+            _spotClient = new UdpClient();
+
             _isListening = false;
-            _isSubscribed = false;
             _isConnected = false;
         }
 
@@ -34,14 +60,22 @@ namespace AssettoNet.Network
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task ConnectAsync(string host, int port = 9996)
         {
-            _client.Connect(host, port);
+            _spotClient.Connect(host, port);
+            _updateClient.Connect(host, port);
 
-            await SendHandshakeAsync();
-            await ReadHandshakeAsync();
+            await SendHandshakeAsync(_spotClient);
+            await SendHandshakeAsync(_updateClient);
 
-            OnClientConnected?.Invoke(this, EventArgs.Empty);
+            // Discard the first one since they will both be the same handshake data.
+            _ = await ReadHandshakeAsync(_spotClient);
+            var handshake = await ReadHandshakeAsync(_updateClient);
+
+            await SubscribeAsync(_spotClient, AssettoEventType.Spot);
+            await SubscribeAsync(_updateClient, AssettoEventType.Update);
 
             _isConnected = true;
+
+            OnConnected?.Invoke(this, new AssettoConnectedEventArgs(handshake));
         }
 
         /// <summary>
@@ -50,13 +84,14 @@ namespace AssettoNet.Network
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task DisconnectAsync()
         {
-            await UnsubscribeAsync();
+            await UnsubscribeAsync(_spotClient);
+            await UnsubscribeAsync(_updateClient);
 
             _isListening = false;
             _isConnected = false;
         }
 
-        private async Task SendHandshakeAsync()
+        private async Task SendHandshakeAsync(UdpClient client)
         {
             var handshakeRequest = new AssettoOperationRequest()
             {
@@ -67,18 +102,18 @@ namespace AssettoNet.Network
 
             var packet = await handshakeRequest.SerializeAsync();
 
-            await _client.SendAsync(packet, packet.Length);
+            await client.SendAsync(packet, packet.Length);
         }
 
-        private async Task ReadHandshakeAsync()
+        private async Task<AssettoHandshakeData> ReadHandshakeAsync(UdpClient client)
         {
-            var result = await _client.ReceiveAsync();
-            var response = await AssettoHandshakeResponse.DeserializeAsync(result.Buffer);
+            var result = await client.ReceiveAsync();
+            var data = result.Buffer;
 
-            OnClientHandshake?.Invoke(this, new AssettoHandshakeEventArgs(response));
+            return data.ToStruct<AssettoHandshakeData>();
         }
 
-        private async Task SubscribeAsync(AssettoEventType eventType)
+        private async Task SubscribeAsync(UdpClient client, AssettoEventType eventType)
         {
             AssettoOperationRequest request;
 
@@ -106,12 +141,10 @@ namespace AssettoNet.Network
             }
 
             var packet = await request.SerializeAsync();
-            await _client.SendAsync(packet, packet.Length);
-
-            _isSubscribed = true;
+            await client.SendAsync(packet, packet.Length);
         }
 
-        private async Task UnsubscribeAsync()
+        private async Task UnsubscribeAsync(UdpClient client)
         {
             var request = new AssettoOperationRequest()
             {
@@ -121,79 +154,91 @@ namespace AssettoNet.Network
             };
 
             var packet = await request.SerializeAsync();
-            await _client.SendAsync(packet, packet.Length);
+            await client.SendAsync(packet, packet.Length);
+        }
 
-            _isSubscribed = false;
+        private async Task UpdateLoopAsync()
+        {
+            try
+            {
+                int updatePacketLength = 328;
+                var buffer = new ByteBuffer(updatePacketLength * 5);
+
+                while (_isListening)
+                {
+                    var result = await _updateClient.ReceiveAsync();
+                    buffer.Write(result.Buffer);
+
+                    if(buffer.AvailableBytes >= updatePacketLength)
+                    {
+                        var receivedData = buffer.Read(updatePacketLength);
+                        buffer.Normalize();
+
+                        var updateData = receivedData.ToStruct<AssettoUpdateData>();
+
+                        OnPhysicsUpdate?.Invoke(this, new AssettoPhysicsUpdateEventArgs(updateData));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                OnUnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, false));
+            }
+        }
+
+        private async Task SpotLoopAsync()
+        {
+            try
+            {
+                int spotPacketLength = 212;
+                var buffer = new ByteBuffer(spotPacketLength * 5);
+
+                while (_isListening)
+                {
+                    var result = await _spotClient.ReceiveAsync();
+                    buffer.Write(result.Buffer);
+
+                    if (buffer.AvailableBytes >= spotPacketLength)
+                    {
+                        var receivedData = buffer.Read(spotPacketLength);
+                        buffer.Normalize();
+
+                        var handle = GCHandle.Alloc(receivedData, GCHandleType.Pinned);
+                        var spotData = Marshal.PtrToStructure<AssettoSpotData>(handle.AddrOfPinnedObject());
+
+                        OnLapCompleted?.Invoke(this, new AssettoLapCompletedEventArgs(spotData));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                OnUnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, false));
+            }
         }
 
         /// <summary>
-        /// Listens for telemetry events from Assetto Corsa and processes them accordingly.
+        /// Starts the loops for lap completion and physics update events, and begins listening for those events asynchronously.
         /// </summary>
-        /// <param name="eventType">The type of telemetry event to listen for.</param>
-        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <remarks>
+        /// This method requires a successful connection, which should be established by calling <see cref="ConnectAsync"/> before invoking this method.
+        /// It listens for events by running two separate loops: one for lap completion and one for physics updates.
+        /// </remarks>
+        /// <returns>
+        /// A task representing the asynchronous operation of starting the event listening loops.
+        /// </returns>
         /// <exception cref="Exception">
-        /// Thrown if the client is not connected before attempting to listen for events,  
-        /// or if an invalid buffer is received from the server.
+        /// Thrown if <see cref="ConnectAsync"/> has not been called prior to calling this method.
         /// </exception>
-        public async Task ListenForEventsAsync(AssettoEventType eventType)
+        public async Task ListenForEventsAsync()
         {
             if(!_isConnected)
             {
                 throw new Exception("You must call ConnectAsync before you can listen for events.");
             }
 
-            if(_isSubscribed)
-            {
-                await UnsubscribeAsync();
-            }
-
-            await SubscribeAsync(eventType);
-
             _isListening = true;
 
-            OnClientListening?.Invoke(this, new EventArgs());
-
-            while (_isListening)
-            {
-                var result = await _client.ReceiveAsync();
-                if(result.Buffer.Length < 2)
-                {
-                    throw new Exception("Received buffer from server lower than expected length of 2.");
-                }
-
-                var magic = (char)result.Buffer[0];
-
-                if(magic == 'a')
-                {
-                    await ProcessUpdateEventAsync(result.Buffer);
-                }
-                else
-                {
-                    await ProcessSpotEventAsync(result.Buffer);
-                }
-            }
-        }
-
-        private async Task ProcessUpdateEventAsync(byte[] data)
-        {
-            var response = await AssettoUpdateResponse.DeserializeAsync(data);
-
-            OnClientOperationEvent?.Invoke(this, new AssettoOperationEventArgs()
-            {
-                EventType = AssettoEventType.Update,
-                Update = response
-            });
-        }
-
-        private async Task ProcessSpotEventAsync(byte[] data)
-        {
-            var response = await AssettoSpotResponse.DeserializeAsync(data);
-
-            OnClientOperationEvent?.Invoke(this, new AssettoOperationEventArgs()
-            {
-                EventType = AssettoEventType.Spot,
-                Spot = response
-            });
+            await Task.WhenAll(Task.Run(SpotLoopAsync), Task.Run(UpdateLoopAsync));
         }
     }
 }

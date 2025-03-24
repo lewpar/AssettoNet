@@ -4,7 +4,6 @@ using AssettoNet.Network.Struct;
 
 using System;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace AssettoNet.Network
@@ -203,8 +202,7 @@ namespace AssettoNet.Network
                         var receivedData = buffer.Read(spotPacketLength);
                         buffer.Normalize();
 
-                        var handle = GCHandle.Alloc(receivedData, GCHandleType.Pinned);
-                        var spotData = Marshal.PtrToStructure<AssettoSpotData>(handle.AddrOfPinnedObject());
+                        var spotData = receivedData.ToStruct<AssettoSpotData>();
 
                         OnLapCompleted?.Invoke(this, new AssettoLapCompletedEventArgs(spotData));
                     }

@@ -83,6 +83,60 @@ namespace AssettoNet.Network.Struct
         /// Gets the vehicle speed in meters per second.
         /// </summary>
         public float SpeedMs { get => speedMs; }
+        
+        /// <summary>
+        /// Indicates whether ABS (Anti-lock Braking System) is currently enabled.
+        /// </summary>
+        public bool IsAbsEnabled
+        {
+            get => isAbsEnabled != 0;
+            set => isAbsEnabled = (byte)(value ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Indicates whether ABS is actively controlling the brakes at this moment.
+        /// </summary>
+        public bool IsAbsInAction
+        {
+            get => isAbsInAction != 0;
+            set => isAbsInAction = (byte)(value ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Indicates whether TC (Traction Control) is actively limiting power or applying braking.
+        /// </summary>
+        public bool IsTcInAction
+        {
+            get => isTcInAction != 0;
+            set => isTcInAction = (byte)(value ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Indicates whether Traction Control is currently enabled.
+        /// </summary>
+        public bool IsTcEnabled
+        {
+            get => isTcEnabled != 0;
+            set => isTcEnabled = (byte)(value ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Indicates whether the car is currently in the pit lane.
+        /// </summary>
+        public bool IsInPit
+        {
+            get => isInPit != 0;
+            set => isInPit = (byte)(value ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Indicates whether the engine limiter (e.g., pit speed limiter) is currently active.
+        /// </summary>
+        public bool IsEngineLimiterOn
+        {
+            get => isEngineLimiterOn != 0;
+            set => isEngineLimiterOn = (byte)(value ? 1 : 0);
+        }
 
         /// <summary>
         /// Gets how far the gas peddle is pressed down in percentage (0-100).
@@ -214,7 +268,9 @@ namespace AssettoNet.Network.Struct
                    $"Load: {Load}, Dy: {Dy}, Mz: {Mz}" + Environment.NewLine +
                    $"TyreDirtyLevel: {TyreDirtyLevel}, CamberRad: {CamberRad}" + Environment.NewLine +
                    $"TyreRadius: {TyreRadius}, TyreLoadedRadius: {TyreLoadedRadius}, SuspensionHeight: {SuspensionHeight}" + Environment.NewLine +
-                   $"CarSlope: {CarSlope}";
+                   $"CarSlope: {CarSlope}" + Environment.NewLine +
+                   $"IsAbsEnabled: {IsAbsEnabled}, IsAbsInAction: {IsAbsInAction}, IsTcEnabled: {IsTcEnabled}, IsTcInAction: {IsTcInAction}" + Environment.NewLine +
+                   $"IsInPit: {IsInPit}, IsEngineLimiterOn: {IsEngineLimiterOn}";
         }
     }
 }

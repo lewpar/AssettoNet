@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/lewpar/AssettoNet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>assetto corsa, racing simulation, api, telemetry</PackageTags>
-    <Version>2.0.4</Version>
+    <Version>2.0.5</Version>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
 

@@ -74,6 +74,11 @@ namespace AssettoNet.Network
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task ConnectAsync()
         {
+            if (_isConnected)
+            {
+                return;
+            }
+            
             _spotClient.Connect(_listeningHost, _listeningPort);
             _updateClient.Connect(_listeningHost, _listeningPort);
 
@@ -100,6 +105,11 @@ namespace AssettoNet.Network
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task DisconnectAsync()
         {
+            if (!_isConnected)
+            {
+                return;
+            }
+            
             await UnsubscribeAsync(_spotClient);
             await UnsubscribeAsync(_updateClient);
 

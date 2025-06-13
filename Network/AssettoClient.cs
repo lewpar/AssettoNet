@@ -3,6 +3,8 @@ using AssettoNet.IO;
 using AssettoNet.Network.Struct;
 
 using System;
+using System.Linq;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
@@ -32,9 +34,18 @@ namespace AssettoNet.Network
         /// This event is fired when an unhandled exception occurs in the event loops.
         /// </summary>
         public event EventHandler<UnhandledExceptionEventArgs>? OnUnhandledException;
+        
+        /// <summary>
+        /// This event is fired when the UDP Server Listener state has changed from open to closed.
+        /// </summary>
+        public event EventHandler<EventArgs>? OnServerListenerClosed;
 
         private bool _isListening;
         private bool _isConnected;
+        
+        private bool _lastListenerState;
+        private string _listeningHost;
+        private int _listeningPort;
 
         private UdpClient _updateClient;
         private UdpClient _spotClient;
@@ -42,25 +53,29 @@ namespace AssettoNet.Network
         /// <summary>
         /// A UDP client for connecting to the Assetto Corsa UDP telemetry server.
         /// </summary>
-        public AssettoClient()
+        /// <param name="host">The hostname or IP address of the machine running Assetto Corsa.</param>
+        /// <param name="port">The port of the Assetto Corsa UDP server (default: 9996).</param>
+        public AssettoClient(string host, int port = 9996)
         {
             _updateClient = new UdpClient();
             _spotClient = new UdpClient();
 
             _isListening = false;
             _isConnected = false;
+            
+            _lastListenerState = false;
+            _listeningHost = host;
+            _listeningPort = port;
         }
 
         /// <summary>
-        /// Establishes a connection to the Assetto Corsa UDP server and performs a handshake.
+        /// Establishes a connection to the Assetto Corsa UDP server, performing a handshake and starting the listener for spot and update events.
         /// </summary>
-        /// <param name="host">The hostname or IP address of the machine running Assetto Corsa.</param>
-        /// <param name="port">The port of the Assetto Corsa UDP server (default: 9996).</param>
         /// <returns>A task that represents the asynchronous operation.</returns>
-        public async Task ConnectAsync(string host, int port = 9996)
+        public async Task ConnectAsync()
         {
-            _spotClient.Connect(host, port);
-            _updateClient.Connect(host, port);
+            _spotClient.Connect(_listeningHost, _listeningPort);
+            _updateClient.Connect(_listeningHost, _listeningPort);
 
             await SendHandshakeAsync(_spotClient);
             await SendHandshakeAsync(_updateClient);
@@ -75,6 +90,8 @@ namespace AssettoNet.Network
             _isConnected = true;
 
             OnConnected?.Invoke(this, new AssettoConnectedEventArgs(handshake));
+
+            await ListenForEventsAsync();
         }
 
         /// <summary>
@@ -160,7 +177,7 @@ namespace AssettoNet.Network
         {
             try
             {
-                int updatePacketLength = 328;
+                var updatePacketLength = 328;
                 var buffer = new ByteBuffer(updatePacketLength * 5);
 
                 while (_isListening)
@@ -189,7 +206,7 @@ namespace AssettoNet.Network
         {
             try
             {
-                int spotPacketLength = 212;
+                var spotPacketLength = 212;
                 var buffer = new ByteBuffer(spotPacketLength * 5);
 
                 while (_isListening)
@@ -214,29 +231,44 @@ namespace AssettoNet.Network
             }
         }
 
-        /// <summary>
-        /// Starts the loops for lap completion and physics update events, and begins listening for those events asynchronously.
-        /// </summary>
-        /// <remarks>
-        /// This method requires a successful connection, which should be established by calling <see cref="ConnectAsync"/> before invoking this method.
-        /// It listens for events by running two separate loops: one for lap completion and one for physics updates.
-        /// </remarks>
-        /// <returns>
-        /// A task representing the asynchronous operation of starting the event listening loops.
-        /// </returns>
-        /// <exception cref="Exception">
-        /// Thrown if <see cref="ConnectAsync"/> has not been called prior to calling this method.
-        /// </exception>
-        public async Task ListenForEventsAsync()
+        private async Task ServerListenStateChangedLoop()
         {
-            if(!_isConnected)
+            while (_isConnected)
             {
-                throw new Exception("You must call ConnectAsync before you can listen for events.");
+                var currentListenerState = IsAssettoUdpServerListening();
+                
+                if (_lastListenerState != currentListenerState)
+                {
+                    // The UDP server is no longer running, disconnect.
+                    if (!currentListenerState)
+                    {
+                        await DisconnectAsync();
+                    }
+                    
+                    OnServerListenerClosed?.Invoke(this, new EventArgs());
+                }
+                
+                _lastListenerState = currentListenerState;
             }
-
+        }
+        
+        private async Task ListenForEventsAsync()
+        {
             _isListening = true;
 
-            await Task.WhenAll(Task.Run(SpotLoopAsync), Task.Run(UpdateLoopAsync));
+            await Task.WhenAll(Task.Run(SpotLoopAsync), Task.Run(UpdateLoopAsync), Task.Run(ServerListenStateChangedLoop));
+        }
+
+        /// <summary>
+        /// Checks if the Assetto UDP server listener is active/inactive.
+        /// </summary>
+        /// <returns>The current state of the UDP listener.</returns>
+        public bool IsAssettoUdpServerListening()
+        {
+            var ipProps = IPGlobalProperties.GetIPGlobalProperties();
+            var listeners = ipProps.GetActiveUdpListeners();
+
+            return listeners.Any(endpoint => endpoint.Port == _listeningPort);
         }
 
         /// <summary>

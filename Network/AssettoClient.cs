@@ -6,6 +6,7 @@ using System;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace AssettoNet.Network
@@ -41,24 +42,20 @@ namespace AssettoNet.Network
         public event EventHandler<UnhandledExceptionEventArgs>? OnUnhandledException;
         
         /// <summary>
-        /// This event is fired when the UDP Server Listener state has changed from open to closed.
-        /// </summary>
-        public event EventHandler<EventArgs>? OnServerListenerClosed;
-        
-        /// <summary>
         /// Gets the current state of the UDP connection.
         /// </summary>
         public bool IsConnected => _isConnected;
 
-        private bool _isListening;
         private bool _isConnected;
+        private bool _isDisconnecting;
         
-        private bool _lastListenerState;
         private string _listeningHost;
         private int _listeningPort;
 
         private UdpClient _updateClient;
         private UdpClient _spotClient;
+        
+        private CancellationTokenSource _cancellationTokenSource;
 
         /// <summary>
         /// A UDP client for connecting to the Assetto Corsa UDP telemetry server.
@@ -70,12 +67,13 @@ namespace AssettoNet.Network
             _updateClient = new UdpClient();
             _spotClient = new UdpClient();
 
-            _isListening = false;
             _isConnected = false;
+            _isDisconnecting = false;
             
-            _lastListenerState = false;
             _listeningHost = host;
             _listeningPort = port;
+            
+            _cancellationTokenSource = new CancellationTokenSource();
         }
 
         /// <summary>
@@ -88,6 +86,15 @@ namespace AssettoNet.Network
             {
                 return;
             }
+
+            _isDisconnecting = false;
+            
+            // Dispose of the old clients if they are active
+            _updateClient?.Dispose();
+            _spotClient?.Dispose();
+            
+            _updateClient = new UdpClient();
+            _spotClient = new UdpClient();
             
             _spotClient.Connect(_listeningHost, _listeningPort);
             _updateClient.Connect(_listeningHost, _listeningPort);
@@ -106,7 +113,12 @@ namespace AssettoNet.Network
 
             OnConnected?.Invoke(this, new AssettoConnectedEventArgs(handshake));
 
-            await ListenForEventsAsync();
+            _cancellationTokenSource = new CancellationTokenSource();
+            
+            await Task.WhenAll(
+                Task.Run(() => SpotLoopAsync(_cancellationTokenSource.Token)), 
+                Task.Run(() => UpdateLoopAsync(_cancellationTokenSource.Token)), 
+                Task.Run(() => ServerListenStateChangedLoop()));
         }
 
         /// <summary>
@@ -115,10 +127,15 @@ namespace AssettoNet.Network
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task DisconnectAsync()
         {
-            if (!_isConnected)
+            if (!_isConnected ||
+                _isDisconnecting)
             {
                 return;
             }
+
+            _isDisconnecting = true;
+            
+            _cancellationTokenSource?.Cancel();
 
             if (IsAssettoUdpServerListening())
             {
@@ -126,7 +143,6 @@ namespace AssettoNet.Network
                 await UnsubscribeAsync(_updateClient);   
             }
 
-            _isListening = false;
             _isConnected = false;
             
             OnDisconnected?.Invoke(this, new EventArgs());
@@ -198,26 +214,36 @@ namespace AssettoNet.Network
             await client.SendAsync(packet, packet.Length);
         }
 
-        private async Task UpdateLoopAsync()
+        private async Task UpdateLoopAsync(CancellationToken cancellationToken)
         {
             try
             {
                 var updatePacketLength = 328;
                 var buffer = new ByteBuffer(updatePacketLength * 5);
 
-                while (_isListening)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    var result = await _updateClient.ReceiveAsync();
-                    buffer.Write(result.Buffer);
+                    var resultTask = _updateClient.ReceiveAsync();
+                    var completedTask = await Task.WhenAny(resultTask, Task.Delay(-1, cancellationToken));
 
-                    if(buffer.AvailableBytes >= updatePacketLength)
+                    if (completedTask == resultTask)
                     {
-                        var receivedData = buffer.Read(updatePacketLength);
-                        buffer.Normalize();
+                        var result = await resultTask;
+                        buffer.Write(result.Buffer);
 
-                        var updateData = receivedData.ToStruct<AssettoUpdateData>();
+                        if (buffer.AvailableBytes >= updatePacketLength)
+                        {
+                            var receivedData = buffer.Read(updatePacketLength);
+                            buffer.Normalize();
 
-                        OnPhysicsUpdate?.Invoke(this, new AssettoPhysicsUpdateEventArgs(updateData));
+                            var updateData = receivedData.ToStruct<AssettoUpdateData>();
+
+                            OnPhysicsUpdate?.Invoke(this, new AssettoPhysicsUpdateEventArgs(updateData));
+                        }
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
             }
@@ -232,26 +258,36 @@ namespace AssettoNet.Network
             }
         }
 
-        private async Task SpotLoopAsync()
+        private async Task SpotLoopAsync(CancellationToken cancellationToken)
         {
             try
             {
                 var spotPacketLength = 212;
                 var buffer = new ByteBuffer(spotPacketLength * 5);
 
-                while (_isListening)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    var result = await _spotClient.ReceiveAsync();
-                    buffer.Write(result.Buffer);
+                    var resultTask = _spotClient.ReceiveAsync();
+                    var completedTask = await Task.WhenAny(resultTask, Task.Delay(-1, cancellationToken));
 
-                    if (buffer.AvailableBytes >= spotPacketLength)
+                    if (completedTask == resultTask)
                     {
-                        var receivedData = buffer.Read(spotPacketLength);
-                        buffer.Normalize();
+                        var result = await resultTask;
+                        buffer.Write(result.Buffer);
 
-                        var spotData = receivedData.ToStruct<AssettoSpotData>();
+                        if (buffer.AvailableBytes >= spotPacketLength)
+                        {
+                            var receivedData = buffer.Read(spotPacketLength);
+                            buffer.Normalize();
 
-                        OnLapCompleted?.Invoke(this, new AssettoLapCompletedEventArgs(spotData));
+                            var spotData = receivedData.ToStruct<AssettoSpotData>();
+
+                            OnLapCompleted?.Invoke(this, new AssettoLapCompletedEventArgs(spotData));
+                        }
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
             }
@@ -271,27 +307,11 @@ namespace AssettoNet.Network
             while (_isConnected)
             {
                 var currentListenerState = IsAssettoUdpServerListening();
-                
-                if (_lastListenerState != currentListenerState)
+                if (!currentListenerState)
                 {
-                    // The UDP server is no longer running, disconnect.
-                    if (!currentListenerState)
-                    {
-                        await DisconnectAsync();
-                    }
-                    
-                    OnServerListenerClosed?.Invoke(this, new EventArgs());
+                    await DisconnectAsync();
                 }
-                
-                _lastListenerState = currentListenerState;
             }
-        }
-        
-        private async Task ListenForEventsAsync()
-        {
-            _isListening = true;
-
-            await Task.WhenAll(Task.Run(SpotLoopAsync), Task.Run(UpdateLoopAsync), Task.Run(ServerListenStateChangedLoop));
         }
 
         /// <summary>
@@ -311,8 +331,11 @@ namespace AssettoNet.Network
         /// </summary>
         public void Dispose()
         {
-            _updateClient.Dispose();
-            _spotClient.Dispose();
+            _updateClient?.Dispose();
+            _spotClient?.Dispose();
+
+            _isConnected = false;
+            _isDisconnecting = false;
         }
     }
 }

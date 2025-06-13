@@ -44,6 +44,11 @@ namespace AssettoNet.Network
         /// This event is fired when the UDP Server Listener state has changed from open to closed.
         /// </summary>
         public event EventHandler<EventArgs>? OnServerListenerClosed;
+        
+        /// <summary>
+        /// Gets the current state of the UDP connection.
+        /// </summary>
+        public bool IsConnected => _isConnected;
 
         private bool _isListening;
         private bool _isConnected;

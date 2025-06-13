@@ -19,6 +19,11 @@ namespace AssettoNet.Network
         /// This event is fired when the client has passed handshake with the Assetto Telemetry server.
         /// </summary>
         public event EventHandler<AssettoConnectedEventArgs>? OnConnected;
+        
+        /// <summary>
+        /// This event is fired when the client DisconnectAsync is called.
+        /// </summary>
+        public event EventHandler<EventArgs>? OnDisconnected;
 
         /// <summary>
         /// This event is fired for every physics update.
@@ -109,12 +114,17 @@ namespace AssettoNet.Network
             {
                 return;
             }
-            
-            await UnsubscribeAsync(_spotClient);
-            await UnsubscribeAsync(_updateClient);
+
+            if (IsAssettoUdpServerListening())
+            {
+                await UnsubscribeAsync(_spotClient);
+                await UnsubscribeAsync(_updateClient);   
+            }
 
             _isListening = false;
             _isConnected = false;
+            
+            OnDisconnected?.Invoke(this, new EventArgs());
         }
 
         private async Task SendHandshakeAsync(UdpClient client)
@@ -206,6 +216,11 @@ namespace AssettoNet.Network
                     }
                 }
             }
+            catch (SocketException ex)
+            {
+                await DisconnectAsync();
+                OnUnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, false));
+            }
             catch (Exception ex)
             {
                 OnUnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, false));
@@ -234,6 +249,11 @@ namespace AssettoNet.Network
                         OnLapCompleted?.Invoke(this, new AssettoLapCompletedEventArgs(spotData));
                     }
                 }
+            }
+            catch (SocketException ex)
+            {
+                await DisconnectAsync();
+                OnUnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, false));
             }
             catch (Exception ex)
             {

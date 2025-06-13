@@ -11,7 +11,7 @@ namespace AssettoNet.Network
     /// <summary>
     /// A UDP client for connecting to the Assetto Corsa UDP telemetry server.
     /// </summary>
-    public class AssettoClient
+    public class AssettoClient : IDisposable
     {
         /// <summary>
         /// This event is fired when the client has passed handshake with the Assetto Telemetry server.
@@ -237,6 +237,15 @@ namespace AssettoNet.Network
             _isListening = true;
 
             await Task.WhenAll(Task.Run(SpotLoopAsync), Task.Run(UpdateLoopAsync));
+        }
+
+        /// <summary>
+        /// Disposes of the internal Update and Spot UDP clients.
+        /// </summary>
+        public void Dispose()
+        {
+            _updateClient.Dispose();
+            _spotClient.Dispose();
         }
     }
 }

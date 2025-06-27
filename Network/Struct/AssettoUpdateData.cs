@@ -253,6 +253,27 @@ namespace AssettoNet.Network.Struct
         /// Gets the slope of the car, representing the angle of incline or decline.
         /// </summary>
         public float CarSlope { get => carSlope; }
+        
+        /// <summary>
+        /// Gets the current lap time.
+        /// </summary>
+        public int LapTime => lapTime;
+
+        /// <summary>
+        /// Gets the last completed lap time.
+        /// </summary>
+        public int LastLap => lastLap;
+
+        /// <summary>
+        /// Gets the best lap time achieved so far.
+        /// </summary>
+        public int BestLap => bestLap;
+
+        /// <summary>
+        /// Gets the number of laps completed.
+        /// </summary>
+        public int LapCount => lapCount;
+
 
         /// <returns>
         /// A formatted string containing the all of the vehicle telemetry.
@@ -270,7 +291,9 @@ namespace AssettoNet.Network.Struct
                    $"TyreRadius: {TyreRadius}, TyreLoadedRadius: {TyreLoadedRadius}, SuspensionHeight: {SuspensionHeight}" + Environment.NewLine +
                    $"CarSlope: {CarSlope}" + Environment.NewLine +
                    $"IsAbsEnabled: {IsAbsEnabled}, IsAbsInAction: {IsAbsInAction}, IsTcEnabled: {IsTcEnabled}, IsTcInAction: {IsTcInAction}" + Environment.NewLine +
-                   $"IsInPit: {IsInPit}, IsEngineLimiterOn: {IsEngineLimiterOn}";
+                   $"IsInPit: {IsInPit}, IsEngineLimiterOn: {IsEngineLimiterOn}" + Environment.NewLine +
+                   $"LapTime: {LapTime} ms, LastLap: {LastLap} ms, BestLap: {BestLap} ms, LapCount: {LapCount}";
         }
+
     }
 }

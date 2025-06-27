@@ -273,7 +273,21 @@ namespace AssettoNet.Network.Struct
         /// Gets the number of laps completed.
         /// </summary>
         public int LapCount => lapCount;
-
+        
+        /// <summary>
+        /// Gets the vertical G-force (acceleration) acting on the vehicle.
+        /// </summary>
+        public float AccelerationGVertical => accGVertical;
+        
+        /// <summary>
+        /// Gets the horizontal G-force acting on the vehicle during cornering.
+        /// </summary>
+        public float AccelerationGHorizontal => accGHorizontal;
+        
+        /// <summary>
+        /// Gets the frontal G-force acting on the vehicle during acceleration or braking.
+        /// </summary>
+        public float AccelerationGFrontal => accGFrontal;
 
         /// <returns>
         /// A formatted string containing the all of the vehicle telemetry.
@@ -281,6 +295,7 @@ namespace AssettoNet.Network.Struct
         public override string ToString()
         {
             return $"Speed(Kmh): {SpeedKmh:F0}, Speed(Mph): {SpeedMph:F0}, Speed(Ms): {SpeedMs:F0}" + Environment.NewLine +
+                   $"G-Forces: Vertical: {AccelerationGVertical:0.00}g, Horizontal: {AccelerationGHorizontal:0.00}g, Frontal: {AccelerationGFrontal:0.00}g" + Environment.NewLine +
                    $"GasPeddle: {GasPeddle:00.00}%, BrakePeddle: {BrakePeddle:00.00}%, ClutchPeddle: {ClutchPeddle:00.00}%" + Environment.NewLine +
                    $"EngineRPM: {EngineRPM}, Gear: {Gear}" + Environment.NewLine +
                    $"CentreOfGravityHeight: {CentreOfGravityHeight}, Coordinates: {Coordinates}, Position: {Position:00.00}%" + Environment.NewLine +
@@ -294,6 +309,5 @@ namespace AssettoNet.Network.Struct
                    $"IsInPit: {IsInPit}, IsEngineLimiterOn: {IsEngineLimiterOn}" + Environment.NewLine +
                    $"LapTime: {LapTime} ms, LastLap: {LastLap} ms, BestLap: {BestLap} ms, LapCount: {LapCount}";
         }
-
     }
 }

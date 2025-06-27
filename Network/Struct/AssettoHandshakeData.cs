@@ -15,8 +15,8 @@ namespace AssettoNet.Network.Struct
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
         private byte[] driverName;
 
-        int identifier;
-        int version;
+        private int identifier;
+        private int version;
 
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 100)]
         private byte[] trackName;
